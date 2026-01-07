@@ -28,7 +28,8 @@ export default ({init, subscribe, announce}) => {
   let cleanupWatchOnline
 
   return (config, roomId, onJoinError) => {
-    const {appId} = config
+    const {appId, passive} = config
+    const isPassive = !!passive
 
     if (occupiedRooms[appId]?.[roomId]) {
       return occupiedRooms[appId][roomId]
@@ -36,6 +37,7 @@ export default ({init, subscribe, announce}) => {
 
     const pendingOffers = {}
     const connectedPeers = {}
+    let isActive = !isPassive // Passive peers start inactive
     const rootTopicPlaintext = topicPath(libName, appId, roomId)
     const rootTopicP = sha1(rootTopicPlaintext)
     const selfTopicP = sha1(topicPath(rootTopicPlaintext, selfId))
@@ -50,6 +52,13 @@ export default ({init, subscribe, announce}) => {
     const toCipher = withKey(encrypt)
 
     const makeOffer = () => initPeer(true, config)
+
+    const checkDeactivate = () => {
+      // Passive peers deactivate when all peers disconnect
+      if (isPassive && Object.keys(connectedPeers).length === 0 && isActive) {
+        isActive = false
+      }
+    }
 
     const connectPeer = (peer, peerId, relayId) => {
       if (connectedPeers[peerId]) {
@@ -73,6 +82,7 @@ export default ({init, subscribe, announce}) => {
     const disconnectPeer = (peer, peerId) => {
       if (connectedPeers[peerId] === peer) {
         delete connectedPeers[peerId]
+        checkDeactivate()
       }
     }
 
@@ -120,6 +130,16 @@ export default ({init, subscribe, announce}) => {
         typeof msg === 'string' ? fromJson(msg) : msg
 
       if (peerId === selfId || connectedPeers[peerId]) {
+        return
+      }
+
+      // Passive peer logic: activate when any peer announces
+      if (isPassive && !isActive && !offer && !answer) {
+        isActive = true
+      }
+
+      // Skip if we're passive and not yet active
+      if (isPassive && !isActive) {
         return
       }
 
@@ -256,6 +276,12 @@ export default ({init, subscribe, announce}) => {
     )
 
     all([rootTopicP, selfTopicP]).then(([rootTopic, selfTopic]) => {
+      // Passive peers never announce - they only respond to announcements
+      // This prevents passive peers from discovering each other
+      if (isPassive) {
+        return
+      }
+
       const queueAnnounce = async (relay, i) => {
         const ms = await announce(relay, rootTopic, selfTopic)
 
@@ -279,7 +305,7 @@ export default ({init, subscribe, announce}) => {
 
     occupiedRooms[appId] ||= {}
 
-    return (occupiedRooms[appId][roomId] = room(
+    const roomInstance = room(
       f => (onPeerConnect = f),
       id => delete connectedPeers[id],
       () => {
@@ -290,6 +316,11 @@ export default ({init, subscribe, announce}) => {
         cleanupWatchOnline()
         didInit = false
       }
-    ))
+    )
+
+    // Expose passive status for application layer
+    roomInstance.isPassive = () => isPassive
+
+    return (occupiedRooms[appId][roomId] = roomInstance)
   }
 }
