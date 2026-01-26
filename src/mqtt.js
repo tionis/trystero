@@ -44,8 +44,10 @@ export const joinRoom = strategy({
     }
   },
 
-  announce: (client, rootTopic) =>
+  announce: (client, rootTopic, _, {isPassive}) => {
+    if (isPassive) return
     client.publish(rootTopic, toJson({peerId: selfId}))
+  }
 })
 
 export const getRelaySockets = () => ({...sockets})

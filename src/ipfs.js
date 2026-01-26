@@ -49,8 +49,10 @@ export const joinRoom = strategy({
     return () => unsubFns.forEach(f => f())
   },
 
-  announce: (node, rootTopic) =>
+  announce: (node, rootTopic, _, {isPassive}) => {
+    if (isPassive) return
     sendMessage(node, rootTopic, toJson({peerId: selfId}))
+  }
 })
 
 export {selfId} from './utils.js'

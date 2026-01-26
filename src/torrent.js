@@ -101,6 +101,7 @@ export const joinRoom = strategy({
         }
       })
 
+      client.isPassive = !!config.passive
       const {url} = client
 
       clients[url] = client
@@ -112,7 +113,10 @@ export const joinRoom = strategy({
   subscribe: (client, rootTopic, _, onMessage, getOffers) => {
     const {url} = client
 
-    const announce = async () => {
+    const announce = async (active) => {
+      if (client.isPassive && !active) {
+        return
+      }
       const offers = fromEntries(
         (await getOffers(offerPoolSize)).map(peerAndOffer => [
           genId(hashLimit),
@@ -147,8 +151,11 @@ export const joinRoom = strategy({
       }
 
       send(client, rootTopic, {
+        left: client.isPassive ? 0 : 1,
         numwant: offerPoolSize,
-        offers: entries(offers).map(([id, {offer}]) => ({offer_id: id, offer}))
+        offers: client.isPassive
+          ? []
+          : entries(offers).map(([id, {offer}]) => ({offer_id: id, offer}))
       })
     }
 
@@ -157,10 +164,10 @@ export const joinRoom = strategy({
     announceFns[url][rootTopic] = announce
     announceIntervals[url] ||= {}
     announceIntervals[url][rootTopic] = setInterval(
-      announce,
+      () => announce(true),
       trackerAnnounceMs[url]
     )
-    announce()
+    announce(true)
 
     return () => {
       clearInterval(announceIntervals[url][rootTopic])

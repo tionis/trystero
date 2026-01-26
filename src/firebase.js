@@ -101,7 +101,8 @@ export const joinRoom = strategy({
     }
   },
 
-  announce: async (rootRef, rootTopic, selfTopic) => {
+  announce: async (rootRef, rootTopic, selfTopic, {isPassive}) => {
+    if (isPassive) return
     const roomRef = child(rootRef, rootTopic)
     const selfRef = child(roomRef, selfTopic)
 

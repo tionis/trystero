@@ -123,8 +123,10 @@ export const joinRoom = strategy({
     }
   },
 
-  announce: async (client, rootTopic) =>
+  announce: async (client, rootTopic, _, {isPassive}) => {
+    if (isPassive) return
     client.send(await createEvent(rootTopic, toJson({peerId: selfId})))
+  }
 })
 
 export const getRelaySockets = socketGetter(clients)
